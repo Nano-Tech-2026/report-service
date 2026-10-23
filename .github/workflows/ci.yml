@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for package.json
+        id: pkg
+        run: |
+          if [ -f package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Nothing to build yet
+        if: steps.pkg.outputs.present == 'false'
+        run: echo "No package.json yet — skipping."
+
+      - uses: pnpm/action-setup@v4
+        if: steps.pkg.outputs.present == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.pkg.outputs.present == 'true'
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm run lint
+
+      - name: Typecheck
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm run typecheck
+
+      - name: Test
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm run test
+
+      - name: Build
+        if: steps.pkg.outputs.present == 'true'
+        run: pnpm run build

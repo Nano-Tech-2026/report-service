@@ -1,0 +1,45 @@
+name: release
+
+# Triggered only when the maintainer publishes a GitHub Release (tag vX.Y.Z).
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Skip private packages
+        id: priv
+        run: echo "private=$(node -p "require('./package.json').private === true")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches package version
+        if: steps.priv.outputs.private != 'true'
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          [ "$PKG" = "${{ github.event.release.tag_name }}" ] || { echo "Tag ${{ github.event.release.tag_name }} != package $PKG"; exit 1; }
+
+      - run: pnpm install --frozen-lockfile
+        if: steps.priv.outputs.private != 'true'
+      - run: pnpm run build
+        if: steps.priv.outputs.private != 'true'
+      - run: pnpm run test
+        if: steps.priv.outputs.private != 'true'
+
+      - name: Publish to npm
+        if: steps.priv.outputs.private != 'true'
+        run: pnpm publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
